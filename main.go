@@ -57,14 +57,14 @@ func (s Stutter) String() string {
 }
 
 type Visit struct {
-	symlen  *Symlen
-	Stutter []Stutter
-	Package string
-	Fset    *token.FileSet
+	symlen   *Symlen
+	Stutters []Stutter
+	Package  string
+	Fset     *token.FileSet
 }
 
 func (v *Visit) Append(symb string, pkg string, pos token.Position) {
-	v.Stutter = append(v.Stutter, Stutter{
+	v.Stutters = append(v.Stutters, Stutter{
 		Symbol:   symb,
 		Package:  pkg,
 		Position: pos,
@@ -76,19 +76,23 @@ func (s *Visit) Visit(node ast.Node) ast.Visitor {
 	contains := func(a, b string) bool {
 		return strings.Contains(strings.ToLower(a), strings.ToLower(b))
 	}
+	equals := func(a, b string) bool {
+		return (strings.ToLower(a) == strings.ToLower(b))
+	}
 	switch v := node.(type) {
 	case *ast.FuncDecl:
 		s.symlen.Accumulate(v.Name.String(), s.Fset.PositionFor(v.Pos(), true))
-		if v.Recv == nil && contains(v.Name.String(), s.Package) {
+		if v.Recv == nil && v.Name.IsExported() && contains(v.Name.String(), s.Package) {
 			s.Append(v.Name.String(), s.Package, s.Fset.PositionFor(v.Pos(), true))
 		}
-
 	case *ast.GenDecl:
 		for _, spec := range v.Specs {
 			switch d := spec.(type) {
 			case *ast.TypeSpec:
 				s.symlen.Accumulate(d.Name.String(), s.Fset.PositionFor(d.Pos(), true))
-				if contains(d.Name.String(), s.Package) {
+				if equals(d.Name.String(), s.Package) {
+					fmt.Printf("type %s is identical to package %s. Make sure this is warranted.\n", d.Name.String(), s.Package)
+				} else if contains(d.Name.String(), s.Package) {
 					s.Append(d.Name.String(), s.Package, s.Fset.PositionFor(d.Pos(), true))
 				}
 			case *ast.ValueSpec:
@@ -142,7 +146,7 @@ func main() {
 				}
 
 				for _, visitor := range visitors {
-					for _, s := range visitor.Stutter {
+					for _, s := range visitor.Stutters {
 						fmt.Printf("%s\n", s)
 					}
 				}
